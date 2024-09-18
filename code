@@ -1,0 +1,41 @@
+simulations <- 1000
+
+# 存储中介效应的数组
+mediation_effects <- numeric(simulations)
+
+for (i in 1:simulations) {
+  sample_data <- DATA[sample(nrow(DATA), size = nrow(DATA), replace = TRUE), ]
+  
+  # 重新拟合多项式逻辑回归模型
+  fitM_sim <- multinom(stage ~ total_score + age + sex + education + PIR_factor + marital + smoke 
+                       + drink + MVPA_level2 + race + depression_10, data = sample_data)
+  
+  # 获取预测值
+  predicted_stage_sim <- predict(fitM_sim, type = "probs")
+  predicted_stage_sim_df <- as.data.frame(predicted_stage_sim)
+  
+  # 重新拟合生存模型
+  fitY_sim <- coxph(Surv(PERMTH_EXM, MORTSTAT) ~ . + total_score + age + sex + 
+                      education + PIR_factor + marital + smoke 
+                    + drink + MVPA_level2 + race + depression_10, 
+                    data = cbind(sample_data, predicted_stage_sim_df),
+                    control = coxph.control(iter.max = 1000))
+  
+  # 打印所有系数名称以检查
+  coef_summary <- summary(fitY_sim)
+  coef_names <- names(coef(coef_summary))
+  print(coef_names)
+  
+  # 提取正确的系数
+  if ("predicted_stage_sim" %in% coef_names) {
+    mediation_effects[i] <- coef_summary$coefficients["predicted_stage_sim", "Estimate"]
+  } else {
+    mediation_effects[i] <- NA
+  }
+}
+
+# 计算均值和置信区间
+mean_effect <- mean(mediation_effects, na.rm = TRUE)
+ci <- quantile(mediation_effects, c(0.025, 0.975), na.rm = TRUE)
+
+list(mean = mean_effect, ci = ci)
